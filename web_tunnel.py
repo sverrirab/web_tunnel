@@ -2,7 +2,7 @@
 #
 # Generic socket tunnel.  Code is based from (permissive license):
 # http://voorloopnul.com/blog/a-python-proxy-in-less-than-100-lines-of-code/
-# Released as Public Domain (please feel to do whatever you like).
+# Please see LICENSE file for more detail.
 #
 # This adds the possibility to automatically replace host header on the fly.
 # That feature should only be used for (very) simple http requests (no https support).

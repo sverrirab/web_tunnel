@@ -18,19 +18,23 @@ __author__ = 'sab@keilir.com'
 
 BUFFER_SIZE = 4096
 DELAY = 0.01
-HTTP_HEADER_RE = re.compile(
+HTTP_HOST_HEADER_RE = re.compile(
     "[GET|POST|HEAD|PUT|DELETE|CONNECT].*\r\n[H|h][O|o][S|s][T|t]:(.*?)\r\n.*\r\n\r\n",
     re.MULTILINE + re.DOTALL)
+
+HTTP_VERSION_HEADER_RE = re.compile(
+    "^HTTP\/([\d|\.]+)\s+(\d*)(.*)\r\n")
 
 
 class Tunnel:
     input_list = []
     channel = {}
 
-    def __init__(self, local_address, remote_address, replace_hostname=None, verbose=False):
+    def __init__(self, local_address, remote_address, replace_hostname=None, downgrade_http=False, verbose=0):
         self.local_address = local_address
         self.remote_address = remote_address
         self.replace_hostname = replace_hostname
+        self.downgrade_http = downgrade_http
         self.verbose = verbose
         self.socket = None
         self.data = None
@@ -98,12 +102,19 @@ class Tunnel:
     def on_recv(self):
         data = self.data
         if self.replace_hostname:
-            header = HTTP_HEADER_RE.match(data)
+            header = HTTP_HOST_HEADER_RE.match(data)
             if header:
                 old_host = header.group(1)
                 if self.verbose:
                     print "Found HTTP header, changing %s to %s" % (old_host.strip(), self.replace_hostname)
                 data = data[:header.start(1)] + " " + self.replace_hostname + data[header.end(1):]
+        if self.downgrade_http:
+            version = HTTP_VERSION_HEADER_RE.match(data)
+            if version:
+                if self.verbose:
+                    print "Found HTTP Version HEADER: ", version.group(1), version.group(2), version.group(3)
+                # Stripping code string as well
+                data = data[:version.start(1)] + "1.0 " + version.group(2) + data[version.end(3):]
 
         if self.verbose > 1:
             print "- " * 39
@@ -118,13 +129,20 @@ if __name__ == "__main__":
     parser.add_argument("-a", "--local-address", dest="laddr", help="Local interface to bind to", default="localhost")
     parser.add_argument("-p", "--local-port", dest="lport", help="Local port to open", type=int, default=8880)
     parser.add_argument("-r", "--replace-hostname", dest="replace_hostname", help="Replace hostname in http requests")
+    parser.add_argument("-d", "--downgrade-http", dest="downgrade_http",  action="count", help="Downgrade responses to HTTP/1.0")
     parser.add_argument("-v", "--verbose", action="count", help="Increase output verbosity")
     parser.add_argument("address", help="Address of remote machine to forward to")
     parser.add_argument("port", help="Port of remote machine to forward to", type=int)
 
     args = parser.parse_args()
 
-    server = Tunnel((args.laddr, args.lport), (args.address, args.port), args.replace_hostname, args.verbose)
+    server = Tunnel(
+        (args.laddr, args.lport),
+        (args.address, args.port),
+        args.replace_hostname,
+        args.downgrade_http,
+        args.verbose)
+
     try:
         server.main_loop()
     except KeyboardInterrupt:

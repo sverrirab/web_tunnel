@@ -26,6 +26,12 @@ HTTP_VERSION_HEADER_RE = re.compile(
     "^HTTP\/([\d|\.]+)\s+(\d*)(.*)\r\n")
 
 
+def control_output(s):
+    print("\t|\t")
+    for line in s.split("\n"):
+        print(f"\t|\t{line}")
+
+
 class Tunnel:
     input_list = []
     channel = {}
@@ -46,10 +52,10 @@ class Tunnel:
         ssocket.listen(16)
         self.socket = ssocket
         if self.verbose:
-            print "Listening on %s" % repr(self.local_address)
+            control_output(f"Listening on {self.local_address}")
 
         self.input_list.append(self.socket)
-        while 1:
+        while True:
             time.sleep(DELAY)
             inputready, outputready, exceptready = select.select(self.input_list, [], [])
             for self.s in inputready:
@@ -70,7 +76,7 @@ class Tunnel:
             forward.connect(self.remote_address)
             return forward
         except socket.error as e:
-            print e
+            control_output(e)
             return False
 
     def on_accept(self):
@@ -78,19 +84,19 @@ class Tunnel:
         clientsock, clientaddr = self.socket.accept()
         if forward:
             if self.verbose:
-                print "%s has connected" % repr(clientaddr)
+                control_output(f"{clientaddr!r}] has connected")
             self.input_list.append(clientsock)
             self.input_list.append(forward)
             self.channel[clientsock] = forward
             self.channel[forward] = clientsock
         else:
-            print "Can't establish connection with remote server.",
-            print "Closing connection with client side: %s" % repr(clientaddr)
+            control_output("Can't establish connection with remote server.")
+            control_output(f"Closing connection with client side: {clientaddr!r}")
             clientsock.close()
 
     def on_close(self):
         if self.verbose:
-            print "%s has disconnected" % repr(self.s.getpeername())
+            control_output(f"{self.s.getpeername()} has disconnected")
         self.input_list.remove(self.s)
         self.input_list.remove(self.channel[self.s])
         out = self.channel[self.s]
@@ -106,20 +112,20 @@ class Tunnel:
             if header:
                 old_host = header.group(1)
                 if self.verbose:
-                    print "Found HTTP header, changing %s to %s" % (old_host.strip(), self.replace_hostname)
+                    control_output(f"Found HTTP header, changing {old_host.strip()} to {self.replace_hostname}")
                 data = data[:header.start(1)] + " " + self.replace_hostname + data[header.end(1):]
         if self.downgrade_http:
             version = HTTP_VERSION_HEADER_RE.match(data)
             if version:
                 if self.verbose:
-                    print "Found HTTP Version HEADER: ", version.group(1), version.group(2), version.group(3)
+                    control_output(f"Found HTTP Version HEADER: {version.group(1)} {version.group(2)} {version.group(3)}")
                 # Stripping code string as well
                 data = data[:version.start(1)] + "1.0 " + version.group(2) + data[version.end(3):]
 
         if self.verbose > 1:
-            print "- " * 39
-            print data
-            print " -" * 39
+            control_output("data ->")
+            print(data.decode("utf8", "backslashreplace"), end="")
+            control_output("<- data")
 
         self.channel[self.s].send(data)
 
@@ -130,7 +136,7 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--local-port", dest="lport", help="Local port to open", type=int, default=8880)
     parser.add_argument("-r", "--replace-hostname", dest="replace_hostname", help="Replace hostname in http requests")
     parser.add_argument("-d", "--downgrade-http", dest="downgrade_http",  action="count", help="Downgrade responses to HTTP/1.0")
-    parser.add_argument("-v", "--verbose", action="count", help="Increase output verbosity")
+    parser.add_argument("-v", "--verbose", default=0, action="count", help="Increase output verbosity")
     parser.add_argument("address", help="Address of remote machine to forward to")
     parser.add_argument("port", help="Port of remote machine to forward to", type=int)
 
@@ -146,5 +152,5 @@ if __name__ == "__main__":
     try:
         server.main_loop()
     except KeyboardInterrupt:
-        print "Server Stopped"
+        print("Server Stopped")
         sys.exit(1)
